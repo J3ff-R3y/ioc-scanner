@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IOC Scanner</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg:      #07090f;
+  --panel:   #0d1117;
+  --surface: #111827;
+  --border:  #1f2937;
+  --border2: #374151;
+  --acc:     #22d3ee;
+  --acc2:    #0891b2;
+  --mal:     #f43f5e;
+  --sus:     #fb923c;
+  --cln:     #34d399;
+  --unk:     #6b7280;
+  --txt:     #f1f5f9;
+  --muted:   #64748b;
+  --mono:    'JetBrains Mono', monospace;
+  --sans:    'DM Sans', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--sans);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Subtle grid background */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(34,211,238,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34,211,238,.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+
+/* ── Header ── */
+header {
+  position: relative; z-index: 1;
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(34,211,238,.05) 0%, transparent 100%);
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.logo {
+  display: flex; align-items: center; gap: .75rem;
+}
+.logo-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, var(--acc), var(--acc2));
+  border-radius: 8px;
+  display: grid; place-items: center;
+  font-size: 1.1rem;
+  box-shadow: 0 0 20px rgba(34,211,238,.3);
+}
+.logo-text h1 { font-size: .95rem; font-weight: 700; letter-spacing: .02em; }
+.logo-text p  { font-size: .68rem; color: var(--muted); font-family: var(--mono); margin-top: .1rem; }
+
+.api-status {
+  display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
+}
+.api-pill {
+  font-family: var(--mono); font-size: .63rem;
+  padding: .18rem .6rem; border-radius: 99px;
+  border: 1px solid var(--border2);
+  color: var(--muted); cursor: pointer;
+  transition: .15s;
+}
+.api-pill.set   { color: var(--cln); border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.08); }
+.api-pill.unset { color: var(--mal); border-color: rgba(244,63,94,.35);  background: rgba(244,63,94,.08); }
+.api-pill:hover { opacity: .8; }
+
+/* ── Main layout ── */
+.app {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Left panel: input ── */
+.input-panel {
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  background: var(--panel);
+}
+
+.panel-header {
+  padding: 1rem 1.25rem .75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: .7rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .12em;
+  color: var(--acc);
+}
+
+/* Tab switcher */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  flex: 1; padding: .6rem;
+  text-align: center; font-size: .72rem; font-weight: 500;
+  cursor: pointer; color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition: .15s;
+}
+.tab.active { color: var(--acc); border-bottom-color: var(--acc); }
+.tab:hover:not(.active) { color: var(--txt); }
+
+/* Tab content */
+.tab-content { display: none; flex: 1; flex-direction: column; }
+.tab-content.active { display: flex; }
+
+/* Multi-line textarea */
+.ioc-textarea {
+  flex: 1;
+  background: transparent;
+  border: none; outline: none; resize: none;
+  color: var(--txt);
+  font-family: var(--mono); font-size: .78rem; line-height: 1.7;
+  padding: 1rem 1.25rem;
+  min-height: 220px;
+}
+.ioc-textarea::placeholder { color: var(--muted); }
+
+.textarea-footer {
+  padding: .5rem 1.25rem;
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: .68rem; color: var(--muted);
+}
+.ioc-counter { font-family: var(--mono); }
+
+/* CSV upload */
+.csv-drop {
+  margin: 1rem 1.25rem;
+  border: 2px dashed var(--border2);
+  border-radius: 8px;
+  padding: 2rem 1rem;
+  text-align: center;
+  cursor: pointer; transition: .2s;
+  color: var(--muted);
+}
+.csv-drop:hover, .csv-drop.drag-over {
+  border-color: var(--acc);
+  background: rgba(34,211,238,.04);
+  color: var(--txt);
+}
+.csv-drop input { display: none; }
+.csv-drop-icon { font-size: 2rem; margin-bottom: .5rem; }
+.csv-drop p { font-size: .78rem; }
+.csv-drop small { font-size: .68rem; font-family: var(--mono); }
+
+.csv-preview {
+  margin: 0 1.25rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .6rem .9rem;
+  font-family: var(--mono); font-size: .7rem;
+  color: var(--muted);
+  display: none;
+}
+
+/* Column selector */
+.col-select {
+  margin: 0 1.25rem .75rem;
+  display: none;
+}
+.col-select label { font-size: .72rem; color: var(--muted); display: block; margin-bottom: .3rem; }
+.col-select select {
+  width: 100%;
+  background: var(--surface); color: var(--txt);
+  border: 1px solid var(--border2); border-radius: 5px;
+  padding: .4rem .7rem; font-size: .78rem; font-family: var(--mono);
+  outline: none;
+}
+
+/* Options */
+.options {
+  padding: .75rem 1.25rem;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: .5rem;
+}
+.opt-row {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: .75rem;
+}
+.opt-label { color: var(--muted); }
+.toggle {
+  position: relative; width: 36px; height: 20px;
+  cursor: pointer;
+}
+.toggle input { display: none; }
+.toggle-track {
+  position: absolute; inset: 0;
+  background: var(--border2); border-radius: 99px;
+  transition: .2s;
+}
+.toggle input:checked + .toggle-track { background: var(--acc2); }
+.toggle-thumb {
+  position: absolute; top: 3px; left: 3px;
+  width: 14px; height: 14px;
+  background: #fff; border-radius: 50%;
+  transition: .2s;
+}
+.toggle input:checked ~ .toggle-thumb { left: 19px; }
+
+/* Scan button */
+.scan-btn {
+  margin: .75rem 1.25rem 1.25rem;
+  padding: .75rem;
+  background: linear-gradient(135deg, var(--acc), var(--acc2));
+  color: #000; font-weight: 700; font-size: .85rem;
+  border: none; border-radius: 8px; cursor: pointer;
+  letter-spacing: .03em; transition: .15s;
+  display: flex; align-items: center; justify-content: center; gap: .5rem;
+}
+.scan-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.scan-btn:active { transform: translateY(0); }
+.scan-btn:disabled {
+  background: var(--border2); color: var(--muted);
+  cursor: not-allowed; transform: none; filter: none;
+}
+
+/* ── Right panel: results ── */
+.results-panel {
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+.results-header {
+  padding: .9rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+}
+
+.stat-chips {
+  display: flex; gap: .5rem; flex-wrap: wrap;
+}
+.stat-chip {
+  font-family: var(--mono); font-size: .7rem;
+  padding: .2rem .65rem; border-radius: 99px;
+  border: 1px solid var(--border2); color: var(--muted);
+}
+.stat-chip.mal { color: var(--mal); border-color: rgba(244,63,94,.35); background: rgba(244,63,94,.08); }
+.stat-chip.sus { color: var(--sus); border-color: rgba(251,146,60,.35); background: rgba(251,146,60,.08); }
+.stat-chip.cln { color: var(--cln); border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.08); }
+
+.results-actions {
+  margin-left: auto; display: flex; gap: .5rem;
+}
+.action-btn {
+  padding: .3rem .75rem;
+  background: var(--surface); border: 1px solid var(--border2);
+  color: var(--muted); border-radius: 5px;
+  font-size: .72rem; cursor: pointer; transition: .12s;
+}
+.action-btn:hover { color: var(--txt); border-color: var(--acc); }
+
+/* Filter bar */
+.filter-bar {
+  padding: .6rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: .5rem; align-items: center;
+  background: var(--panel);
+}
+.filter-input {
+  flex: 1; max-width: 240px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--txt); border-radius: 5px;
+  padding: .35rem .7rem; font-family: var(--mono); font-size: .75rem; outline: none;
+}
+.filter-input:focus { border-color: var(--acc); }
+.filter-btn {
+  padding: .3rem .7rem;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--muted); border-radius: 5px;
+  font-size: .7rem; cursor: pointer; transition: .12s;
+}
+.filter-btn.active { background: var(--acc); color: #000; border-color: var(--acc); font-weight: 600; }
+.filter-btn:hover:not(.active) { border-color: var(--border2); color: var(--txt); }
+
+/* Results list */
+.results-list {
+  flex: 1; overflow-y: auto;
+  padding: .75rem 1.5rem;
+}
+
+/* Empty/loading states */
+.empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  height: 100%; color: var(--muted); text-align: center;
+  gap: .75rem;
+}
+.empty-icon { font-size: 3rem; opacity: .3; }
+.empty-state p { font-size: .85rem; }
+.empty-state small { font-size: .72rem; font-family: var(--mono); }
+
+/* Progress */
+.progress-bar {
+  height: 2px; background: var(--border);
+  border-radius: 99px; overflow: hidden; margin: .25rem 0;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--acc2), var(--acc));
+  border-radius: 99px; transition: width .3s;
+}
+
+/* Result card */
+.result-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: .6rem;
+  overflow: hidden;
+  transition: .15s;
+}
+.result-card:hover { border-color: var(--border2); }
+.result-card.mal { border-left: 3px solid var(--mal); }
+.result-card.sus { border-left: 3px solid var(--sus); }
+.result-card.cln { border-left: 3px solid var(--cln); }
+.result-card.unk { border-left: 3px solid var(--unk); }
+
+.card-header {
+  padding: .7rem 1rem;
+  display: flex; align-items: center; gap: .75rem;
+  cursor: pointer;
+}
+.card-header:hover { background: rgba(255,255,255,.02); }
+
+.ioc-type-badge {
+  font-family: var(--mono); font-size: .6rem; font-weight: 600;
+  padding: .12rem .45rem; border-radius: 4px;
+  background: rgba(34,211,238,.1); color: var(--acc);
+  border: 1px solid rgba(34,211,238,.2);
+  flex-shrink: 0;
+}
+
+.ioc-value {
+  font-family: var(--mono); font-size: .78rem;
+  color: var(--txt); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.verdict-badge {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .18rem .6rem; border-radius: 99px;
+  font-size: .7rem; font-weight: 700; font-family: var(--mono);
+  white-space: nowrap; flex-shrink: 0;
+}
+.verdict-badge.mal { background: rgba(244,63,94,.15);  color: var(--mal); border: 1px solid rgba(244,63,94,.3); }
+.verdict-badge.sus { background: rgba(251,146,60,.15);  color: var(--sus); border: 1px solid rgba(251,146,60,.3); }
+.verdict-badge.cln { background: rgba(52,211,153,.15);  color: var(--cln); border: 1px solid rgba(52,211,153,.3); }
+.verdict-badge.unk { background: rgba(107,114,128,.15); color: var(--unk); border: 1px solid rgba(107,114,128,.3); }
+
+.expand-icon { color: var(--muted); font-size: .7rem; transition: .2s; flex-shrink: 0; }
+.result-card.expanded .expand-icon { transform: rotate(180deg); }
+
+/* Source grid */
+.card-body {
+  display: none; padding: 0 1rem 1rem;
+}
+.result-card.expanded .card-body { display: block; }
+
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: .6rem;
+}
+
+.source-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px; padding: .65rem .8rem;
+}
+.source-card.mal { border-color: rgba(244,63,94,.3); }
+.source-card.sus { border-color: rgba(251,146,60,.3); }
+.source-card.cln { border-color: rgba(52,211,153,.3); }
+
+.source-name {
+  font-size: .72rem; font-weight: 600; color: var(--txt);
+  margin-bottom: .45rem;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.source-verdict-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+}
+.dot-mal { background: var(--mal); }
+.dot-sus { background: var(--sus); }
+.dot-cln { background: var(--cln); }
+.dot-unk { background: var(--unk); }
+
+.source-row {
+  display: flex; justify-content: space-between; gap: .35rem;
+  padding: .14rem 0; font-size: .68rem;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.source-row:last-child { border-bottom: none; }
+.source-key { color: var(--muted); font-family: var(--mono); flex-shrink: 0; }
+.source-val { color: var(--txt); text-align: right; word-break: break-all; }
+.source-err { color: var(--sus); font-size: .66rem; font-family: var(--mono); }
+
+/* API key modal */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+  z-index: 100; display: none; align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--panel); border: 1px solid var(--border2);
+  border-radius: 12px; padding: 1.75rem;
+  width: 100%; max-width: 440px;
+  box-shadow: 0 25px 60px rgba(0,0,0,.5);
+}
+.modal h2 { font-size: 1rem; font-weight: 700; margin-bottom: .35rem; }
+.modal p { font-size: .75rem; color: var(--muted); margin-bottom: 1.25rem; }
+.key-group { margin-bottom: .85rem; }
+.key-group label {
+  display: block; font-size: .7rem; font-weight: 600;
+  color: var(--acc); margin-bottom: .3rem; font-family: var(--mono);
+}
+.key-group small { display: block; font-size: .65rem; color: var(--muted); margin-top: .2rem; }
+.key-input {
+  width: 100%;
+  background: var(--surface); border: 1px solid var(--border2);
+  color: var(--txt); border-radius: 6px;
+  padding: .5rem .8rem; font-family: var(--mono); font-size: .78rem; outline: none;
+}
+.key-input:focus { border-color: var(--acc); }
+.modal-btns { display: flex; gap: .6rem; margin-top: 1.25rem; }
+.btn-save {
+  flex: 1; padding: .6rem;
+  background: linear-gradient(135deg, var(--acc), var(--acc2));
+  color: #000; font-weight: 700; font-size: .82rem;
+  border: none; border-radius: 7px; cursor: pointer;
+}
+.btn-close {
+  padding: .6rem 1rem;
+  background: var(--surface); border: 1px solid var(--border2);
+  color: var(--muted); border-radius: 7px; cursor: pointer; font-size: .82rem;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+/* Loading spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  display: inline-block;
+}
+
+/* Scan log */
+.scan-log {
+  padding: .5rem 1.5rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono); font-size: .67rem;
+  color: var(--muted); background: var(--panel);
+  height: 32px; overflow: hidden;
+}
+</style>
+</head>
+<body>
+
+<!-- API Key Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2>🔑 API Keys instellen</h2>
+    <p>Keys worden alleen lokaal opgeslagen (localStorage). Ze verlaten nooit deze pagina.</p>
+    <div class="key-group">
+      <label>VIRUSTOTAL_API_KEY</label>
+      <input class="key-input" id="k-vt" type="password" placeholder="Jouw VirusTotal key...">
+      <small>→ virustotal.com/gui/sign-in · Gratis: 4 req/min</small>
+    </div>
+    <div class="key-group">
+      <label>ABUSEIPDB_API_KEY</label>
+      <input class="key-input" id="k-ab" type="password" placeholder="Jouw AbuseIPDB key...">
+      <small>→ abuseipdb.com/register · Gratis: 1.000/dag</small>
+    </div>
+    <div class="key-group">
+      <label>OTX_API_KEY</label>
+      <input class="key-input" id="k-otx" type="password" placeholder="Jouw AlienVault OTX key...">
+      <small>→ otx.alienvault.com · Gratis, ruime limieten</small>
+    </div>
+    <div class="key-group">
+      <label>URLSCAN_API_KEY <span style="color:var(--muted);font-weight:400">(optioneel)</span></label>
+      <input class="key-input" id="k-us" type="password" placeholder="Jouw URLScan.io key...">
+      <small>→ urlscan.io/user/signup · Gratis: 1.000/dag</small>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-save" onclick="saveKeys()">Opslaan</button>
+      <button class="btn-close" onclick="closeModal()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛡️</div>
+    <div class="logo-text">
+      <h1>IOC Scanner</h1>
+      <p>Threat Intelligence · Security Operations · <span style="color:var(--acc)">Made by Jeffrey</span></p>
+    </div>
+  </div>
+  <div class="api-status" id="apiStatus"></div>
+</header>
+
+<!-- Main app -->
+<div class="app">
+
+  <!-- Left: Input panel -->
+  <div class="input-panel">
+    <div class="panel-header">IOC Invoer</div>
+
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchTab('text',this)">✏️ Typen / Plakken</div>
+      <div class="tab" onclick="switchTab('csv',this)">📄 CSV uploaden</div>
+    </div>
+
+    <!-- Text tab -->
+    <div class="tab-content active" id="tab-text">
+      <textarea class="ioc-textarea" id="iocInput"
+        placeholder="Plak of typ IOC's hier — één per regel:
+
+185.220.101.1
+malware-domain.ru
+44d88612fea8a8f36de82e1278abb02f
+attacker@evil.com
+https://phishing.example.com/login
+
+Ondersteunde types:
+  IP-adres       → 185.220.101.1
+  Domein         → malware.ru
+  URL            → https://...
+  MD5 hash       → 32 hex tekens
+  SHA256 hash    → 64 hex tekens
+  E-mailadres    → user@domain.com"
+        oninput="updateCounter()"></textarea>
+      <div class="textarea-footer">
+        <span class="ioc-counter" id="iocCounter">0 IOC's</span>
+        <span style="cursor:pointer;color:var(--acc)" onclick="clearInput()">Wissen</span>
+      </div>
+    </div>
+
+    <!-- CSV tab -->
+    <div class="tab-content" id="tab-csv">
+      <div class="csv-drop" id="csvDrop"
+           onclick="document.getElementById('csvFileInput').click()"
+           ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+        <input type="file" id="csvFileInput" accept=".csv,.txt" onchange="loadFile(event)">
+        <div class="csv-drop-icon">📂</div>
+        <p>Klik om CSV te selecteren</p>
+        <small>of sleep bestand hiernaartoe</small>
+      </div>
+      <div class="csv-preview" id="csvPreview"></div>
+      <div class="col-select" id="colSelect">
+        <label>Kolom met IOC's:</label>
+        <select id="colSelector" onchange="loadColumnValues()"></select>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div class="options">
+      <div style="font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.25rem;">Opties</div>
+      <div class="opt-row">
+        <span class="opt-label">VirusTotal</span>
+        <label class="toggle"><input type="checkbox" id="opt-vt" checked>
+          <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+      </div>
+      <div class="opt-row">
+        <span class="opt-label">AlienVault OTX</span>
+        <label class="toggle"><input type="checkbox" id="opt-otx" checked>
+          <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+      </div>
+      <div class="opt-row">
+        <span class="opt-label">AbuseIPDB (alleen IPs)</span>
+        <label class="toggle"><input type="checkbox" id="opt-abuse" checked>
+          <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+      </div>
+      <div class="opt-row">
+        <span class="opt-label">URLScan.io</span>
+        <label class="toggle"><input type="checkbox" id="opt-us" checked>
+          <div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+      </div>
+    </div>
+
+    <button class="scan-btn" id="scanBtn" onclick="startScan()">
+      <span>🔍</span> Scannen starten
+    </button>
+  </div>
+
+  <!-- Right: Results panel -->
+  <div class="results-panel">
+    <div class="results-header">
+      <div class="stat-chips">
+        <div class="stat-chip" id="stat-total">0 IOC's</div>
+        <div class="stat-chip mal" id="stat-mal" style="display:none">0 Malicious</div>
+        <div class="stat-chip sus" id="stat-sus" style="display:none">0 Suspicious</div>
+        <div class="stat-chip cln" id="stat-cln" style="display:none">0 Clean</div>
+      </div>
+      <div class="results-actions">
+        <button class="action-btn" onclick="exportCSV()">⬇ CSV</button>
+        <button class="action-btn" onclick="exportHTML()">⬇ HTML</button>
+        <button class="action-btn" onclick="openModal()">🔑 API Keys</button>
+      </div>
+    </div>
+
+    <div class="filter-bar" id="filterBar" style="display:none">
+      <input class="filter-input" id="filterInput" placeholder="Zoeken..." oninput="applyFilter()">
+      <button class="filter-btn active" onclick="setFilter('ALL',this)">Alle</button>
+      <button class="filter-btn" onclick="setFilter('MALICIOUS',this)">⛔ Malicious</button>
+      <button class="filter-btn" onclick="setFilter('SUSPICIOUS',this)">⚠️ Suspicious</button>
+      <button class="filter-btn" onclick="setFilter('CLEAN',this)">✅ Clean</button>
+    </div>
+
+    <div class="results-list" id="resultsList">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">🔎</div>
+        <p>Nog geen resultaten</p>
+        <small>Voer IOC's in en klik op Scannen starten</small>
+      </div>
+    </div>
+
+    <div class="scan-log" id="scanLog"></div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let results    = [];
+let activeFilter = 'ALL';
+let csvData    = null;
+let scanning   = false;
+let activeTab  = 'text';
+
+// ── LocalStorage keys ─────────────────────────────────────────────────────────
+const LS = { vt:'ioc_vt_key', ab:'ioc_ab_key', otx:'ioc_otx_key', us:'ioc_us_key' };
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  loadKeys();
+  updateApiStatus();
+  updateCounter();
+};
+
+function getKey(name) { return localStorage.getItem(LS[name]) || ''; }
+
+function loadKeys() {
+  document.getElementById('k-vt').value  = getKey('vt');
+  document.getElementById('k-ab').value  = getKey('ab');
+  document.getElementById('k-otx').value = getKey('otx');
+  document.getElementById('k-us').value  = getKey('us');
+}
+
+function saveKeys() {
+  ['vt','ab','otx','us'].forEach(k => {
+    const val = document.getElementById(`k-${k}`).value.trim();
+    if (val) localStorage.setItem(LS[k], val);
+    else localStorage.removeItem(LS[k]);
+  });
+  updateApiStatus();
+  closeModal();
+}
+
+function updateApiStatus() {
+  const apis = [
+    { id:'vt',  label:'VirusTotal' },
+    { id:'ab',  label:'AbuseIPDB'  },
+    { id:'otx', label:'OTX'        },
+    { id:'us',  label:'URLScan'    },
+  ];
+  const container = document.getElementById('apiStatus');
+  container.innerHTML = apis.map(a => {
+    const set = !!getKey(a.id);
+    return `<span class="api-pill ${set?'set':'unset'}" onclick="openModal()" title="${set?'Ingesteld':'Niet ingesteld — klik om in te stellen'}">${a.label} ${set?'✓':'✗'}</span>`;
+  }).join('');
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal()  { document.getElementById('modalOverlay').classList.add('open'); loadKeys(); }
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+});
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(tab, el) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(`tab-${tab}`).classList.add('active');
+  updateCounter();
+}
+
+// ── IOC counter ───────────────────────────────────────────────────────────────
+function updateCounter() {
+  const iocs = getIOCs();
+  document.getElementById('iocCounter').textContent = `${iocs.length} IOC${iocs.length!==1?'s':''}`;
+}
+
+function clearInput() {
+  document.getElementById('iocInput').value = '';
+  updateCounter();
+}
+
+// ── IOC type detectie ─────────────────────────────────────────────────────────
+function detectType(v) {
+  v = v.trim();
+  if (/^[a-fA-F0-9]{32}$/.test(v))                    return 'md5';
+  if (/^[a-fA-F0-9]{40}$/.test(v))                    return 'sha1';
+  if (/^[a-fA-F0-9]{64}$/.test(v))                    return 'sha256';
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v))              return 'ip';
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v))           return 'email';
+  if (/^https?:\/\//i.test(v))                         return 'url';
+  if (/^[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}$/.test(v))    return 'domain';
+  return 'unknown';
+}
+
+function getIOCs() {
+  let raw = [];
+  if (activeTab === 'text') {
+    raw = document.getElementById('iocInput').value
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#'));
+  } else if (csvData) {
+    raw = csvData;
+  }
+  return [...new Set(raw)].filter(v => detectType(v) !== 'unknown');
+}
+
+// ── CSV handling ──────────────────────────────────────────────────────────────
+function dragOver(e)  { e.preventDefault(); document.getElementById('csvDrop').classList.add('drag-over'); }
+function dragLeave(e) { document.getElementById('csvDrop').classList.remove('drag-over'); }
+function dropFile(e)  { e.preventDefault(); dragLeave(e); processFile(e.dataTransfer.files[0]); }
+function loadFile(e)  { processFile(e.target.files[0]); }
+
+function processFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const text = ev.target.result;
+    // Detecteer of het CSV of txt is
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length === 0) return;
+
+    // Probeer CSV te parsen
+    const firstLine = lines[0];
+    if (firstLine.includes(',') || firstLine.includes(';')) {
+      // CSV
+      const delim = firstLine.includes(';') ? ';' : ',';
+      const headers = firstLine.split(delim).map(h => h.trim().replace(/"/g,''));
+      const rows = lines.slice(1).map(l =>
+        l.split(delim).map(c => c.trim().replace(/"/g,''))
+      );
+
+      // Toon column selector
+      const sel = document.getElementById('colSelector');
+      sel.innerHTML = headers.map((h,i) => `<option value="${i}">${h}</option>`).join('');
+
+      // Auto-select IOC kolom
+      const iocCol = headers.findIndex(h => /url|domain|ip|hash|ioc|indicator/i.test(h));
+      if (iocCol >= 0) sel.value = iocCol;
+
+      document.getElementById('colSelect').style.display = 'block';
+      document.getElementById('csvPreview').style.display = 'block';
+      document.getElementById('csvPreview').textContent =
+        `✓ ${file.name} — ${rows.length} rijen, ${headers.length} kolommen`;
+
+      // Sla rows op
+      window._csvRows    = rows;
+      window._csvHeaders = headers;
+      loadColumnValues();
+    } else {
+      // Platte tekstlijst
+      csvData = lines.filter(l => !l.startsWith('#')).map(l => l.trim());
+      document.getElementById('csvPreview').style.display = 'block';
+      document.getElementById('csvPreview').textContent =
+        `✓ ${file.name} — ${csvData.length} regels geladen`;
+      document.getElementById('colSelect').style.display = 'none';
+      updateCounter();
+    }
+  };
+  reader.readAsText(file);
+}
+
+function loadColumnValues() {
+  if (!window._csvRows) return;
+  const colIdx = parseInt(document.getElementById('colSelector').value);
+  csvData = window._csvRows
+    .map(r => (r[colIdx] || '').trim())
+    .filter(v => v);
+  updateCounter();
+}
+
+// ── API calls ─────────────────────────────────────────────────────────────────
+async function apiGet(url, headers={}) {
+  try {
+    const r = await fetch(url, { headers, signal: AbortSignal.timeout(12000) });
+    if (r.ok || r.status === 404) return await r.json();
+    return null;
+  } catch { return null; }
+}
+
+async function checkVirusTotal(ioc, type) {
+  const key = getKey('vt');
+  if (!key || !document.getElementById('opt-vt').checked)
+    return { source:'VirusTotal', error:'Niet ingeschakeld' };
+
+  const hdrs = { 'x-apikey': key };
+  const base  = 'https://www.virustotal.com/api/v3';
+  let url;
+  if (['md5','sha1','sha256'].includes(type)) url = `${base}/files/${ioc}`;
+  else if (type === 'ip')     url = `${base}/ip_addresses/${ioc}`;
+  else if (type === 'domain') url = `${base}/domains/${ioc}`;
+  else if (type === 'url') {
+    // SHA256 van de URL
+    const enc = new TextEncoder().encode(ioc);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    const hex = [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+    url = `${base}/urls/${hex}`;
+  } else return { source:'VirusTotal', error:`Type '${type}' niet ondersteund` };
+
+  const data = await apiGet(url, hdrs);
+  if (!data) return { source:'VirusTotal', error:'Niet gevonden of fout' };
+  const attrs = data.data?.attributes || {};
+  const stats = attrs.last_analysis_stats || {};
+  const mal = stats.malicious || 0;
+  const sus = stats.suspicious || 0;
+  return {
+    source: 'VirusTotal',
+    malicious: mal, suspicious: sus,
+    harmless: stats.harmless || 0,
+    undetected: stats.undetected || 0,
+    reputation: attrs.reputation ?? '',
+    tags: (attrs.tags||[]).slice(0,5).join(', '),
+    verdict: mal>2?'MALICIOUS': mal>0||sus>2?'SUSPICIOUS':'CLEAN'
+  };
+}
+
+async function checkOTX(ioc, type) {
+  const key = getKey('otx');
+  if (!document.getElementById('opt-otx').checked)
+    return { source:'AlienVault OTX', error:'Niet ingeschakeld' };
+  const hdrs = key ? { 'X-OTX-API-KEY': key } : {};
+  const map = { ip:'IPv4', domain:'domain', url:'url', md5:'file', sha1:'file', sha256:'file', email:'email' };
+  const ot = map[type];
+  if (!ot) return { source:'AlienVault OTX', error:'Type niet ondersteund' };
+  const enc  = encodeURIComponent(ioc);
+  const data = await apiGet(`https://otx.alienvault.com/api/v1/indicators/${ot}/${enc}/general`, hdrs);
+  if (!data) return { source:'AlienVault OTX', error:'Request mislukt' };
+  const pc = data.pulse_info?.count || 0;
+  const tags = [...new Set((data.pulse_info?.pulses||[]).slice(0,5).flatMap(p=>p.tags||[]))].slice(0,8).join(', ');
+  return {
+    source: 'AlienVault OTX',
+    pulse_count: pc, tags,
+    verdict: pc>3?'MALICIOUS': pc>0?'SUSPICIOUS':'CLEAN'
+  };
+}
+
+async function checkAbuseIPDB(ioc, type) {
+  if (type !== 'ip') return { source:'AbuseIPDB', error:'Alleen IP-adressen' };
+  const key = getKey('ab');
+  if (!key || !document.getElementById('opt-abuse').checked)
+    return { source:'AbuseIPDB', error:'Niet ingeschakeld of geen key' };
+  const data = await apiGet(
+    `https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ioc)}&maxAgeInDays=90`,
+    { Key: key, Accept: 'application/json' }
+  );
+  if (!data) return { source:'AbuseIPDB', error:'Request mislukt' };
+  const d = data.data || {};
+  const score = d.abuseConfidenceScore || 0;
+  return {
+    source: 'AbuseIPDB',
+    abuse_score: score, total_reports: d.totalReports||0,
+    country: d.countryCode||'', isp: d.isp||'',
+    usage_type: d.usageType||'',
+    is_whitelisted: d.isWhitelisted ? 'Ja' : 'Nee',
+    last_reported: (d.lastReportedAt||'').substring(0,10),
+    verdict: score>=75?'MALICIOUS': score>=25?'SUSPICIOUS':'CLEAN'
+  };
+}
+
+async function checkURLScan(ioc, type) {
+  if (!['url','domain','ip'].includes(type))
+    return { source:'URLScan.io', error:'Alleen URL/domein/IP' };
+  if (!document.getElementById('opt-us').checked)
+    return { source:'URLScan.io', error:'Niet ingeschakeld' };
+  const key = getKey('us');
+  const hdrs = key ? { 'API-Key': key } : {};
+  let q = ioc;
+  if (type === 'url') try { q = new URL(ioc).hostname; } catch {}
+  const data = await apiGet(`https://urlscan.io/api/v1/search/?q=domain:${encodeURIComponent(q)}&size=5`, hdrs);
+  if (!data?.results?.length) return { source:'URLScan.io', verdict:'NOT_FOUND', scan_count:0 };
+  const v = data.results[0].verdicts?.overall || {};
+  const score = v.score || 0;
+  const mal = v.malicious || false;
+  return {
+    source: 'URLScan.io',
+    scan_count: data.results.length,
+    malicious: mal ? 'Ja' : 'Nee',
+    score, categories: (v.categories||[]).join(', '),
+    last_scan: (data.results[0].task?.time||'').substring(0,10),
+    verdict: mal?'MALICIOUS': score>50?'SUSPICIOUS':'CLEAN'
+  };
+}
+
+async function checkHIBP(ioc, type) {
+  if (type !== 'email') return { source:'HaveIBeenPwned', error:'Alleen e-mail' };
+  const domain = ioc.split('@')[1];
+  const data = await apiGet(`https://haveibeenpwned.com/api/v3/breacheddomain/${domain}`,
+    { 'User-Agent': 'IOC-Scanner' });
+  if (!data) return { source:'HaveIBeenPwned', domain_breached:'Nee', breach_count:0, verdict:'CLEAN' };
+  const count = Object.keys(data).length;
+  return { source:'HaveIBeenPwned', domain_breached:'Ja', breach_count:count, verdict:count>0?'SUSPICIOUS':'CLEAN' };
+}
+
+// ── Scan orchestration ────────────────────────────────────────────────────────
+async function enrichIOC(ioc) {
+  const type = detectType(ioc);
+  const checks = [];
+
+  if (['md5','sha1','sha256','ip','domain','url'].includes(type))
+    checks.push(await checkVirusTotal(ioc, type));
+
+  checks.push(await checkOTX(ioc, type));
+
+  if (type === 'ip')
+    checks.push(await checkAbuseIPDB(ioc, type));
+
+  if (['url','domain','ip'].includes(type))
+    checks.push(await checkURLScan(ioc, type));
+
+  if (type === 'email')
+    checks.push(await checkHIBP(ioc, type));
+
+  const verdicts = checks.map(c=>c.verdict).filter(Boolean);
+  const overall  = verdicts.includes('MALICIOUS')  ? 'MALICIOUS'  :
+                   verdicts.includes('SUSPICIOUS')  ? 'SUSPICIOUS' :
+                   verdicts.includes('CLEAN')       ? 'CLEAN'      : 'UNKNOWN';
+
+  return { ioc, type, timestamp: new Date().toISOString(), overall, checks };
+}
+
+async function startScan() {
+  if (scanning) return;
+  const iocs = getIOCs();
+  if (!iocs.length) { log('Geen geldige IOC\'s gevonden.'); return; }
+
+  scanning = true;
+  results  = [];
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('scanBtn').innerHTML = '<div class="spinner"></div> Scannen...';
+  document.getElementById('filterBar').style.display = 'none';
+  document.getElementById('resultsList').innerHTML = `
+    <div class="empty-state">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+      <p>Scannen — 0 / ${iocs.length}</p>
+      <div class="progress-bar" style="width:200px">
+        <div class="progress-fill" id="progFill" style="width:0%"></div>
+      </div>
+      <small id="progLabel">Bezig met ${iocs[0]}...</small>
+    </div>`;
+  updateStats();
+
+  for (let i = 0; i < iocs.length; i++) {
+    const ioc = iocs[i];
+    log(`[${i+1}/${iocs.length}] ${ioc}`);
+    document.querySelector('.empty-state p').textContent = `Scannen — ${i+1} / ${iocs.length}`;
+    document.getElementById('progFill').style.width = `${Math.round((i/iocs.length)*100)}%`;
+    document.getElementById('progLabel').textContent = `Bezig met ${ioc}...`;
+
+    const r = await enrichIOC(ioc);
+    results.push(r);
+
+    // Rate limiting
+    if (i < iocs.length - 1) await sleep(1300);
+  }
+
+  scanning = false;
+  document.getElementById('scanBtn').disabled = false;
+  document.getElementById('scanBtn').innerHTML = '<span>🔍</span> Opnieuw scannen';
+  renderResults();
+  updateStats();
+  document.getElementById('filterBar').style.display = 'flex';
+  log(`Klaar — ${results.length} IOC's gescand`);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function log(msg)  { document.getElementById('scanLog').textContent = msg; }
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function renderResults() {
+  const q      = document.getElementById('filterInput')?.value?.toLowerCase() || '';
+  const list   = document.getElementById('resultsList');
+  const visible = results.filter(r => {
+    if (activeFilter !== 'ALL' && r.overall !== activeFilter) return false;
+    if (q && !r.ioc.toLowerCase().includes(q) && !r.overall.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  if (!visible.length) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">🔎</div><p>Geen resultaten</p></div>`;
+    return;
+  }
+
+  list.innerHTML = visible.map(r => renderCard(r)).join('');
+}
+
+function renderCard(r) {
+  const vc = verdictClass(r.overall);
+  const vi = verdictIcon(r.overall);
+
+  const sourcesHTML = r.checks.map(c => {
+    const sc = verdictClass(c.verdict || 'UNKNOWN');
+    const dotClass = `dot-${sc}`;
+    const rows = Object.entries(c)
+      .filter(([k]) => !['source','verdict'].includes(k))
+      .map(([k,v]) => {
+        if (k === 'error') return `<div class="source-row"><span class="source-err">⚠ ${v}</span></div>`;
+        if (Array.isArray(v)) v = v.join(', ') || '—';
+        if (typeof v === 'boolean') v = v ? 'Ja' : 'Nee';
+        return `<div class="source-row"><span class="source-key">${k}</span><span class="source-val">${v||'—'}</span></div>`;
+      }).join('');
+    return `<div class="source-card ${sc}">
+      <div class="source-name">${c.source}<span class="source-verdict-dot ${dotClass}"></span></div>
+      ${rows}
+    </div>`;
+  }).join('');
+
+  return `<div class="result-card ${vc}" id="card-${r.ioc.replace(/[^a-z0-9]/gi,'_')}">
+    <div class="card-header" onclick="toggleCard(this)">
+      <span class="ioc-type-badge">${r.type.toUpperCase()}</span>
+      <span class="ioc-value" title="${r.ioc}">${r.ioc}</span>
+      <span class="verdict-badge ${vc}">${vi} ${r.overall}</span>
+      <span class="expand-icon">▾</span>
+    </div>
+    <div class="card-body">
+      <div class="source-grid">${sourcesHTML}</div>
+    </div>
+  </div>`;
+}
+
+function toggleCard(header) {
+  header.closest('.result-card').classList.toggle('expanded');
+}
+
+function verdictClass(v) {
+  return {MALICIOUS:'mal',SUSPICIOUS:'sus',CLEAN:'cln',NOT_FOUND:'unk'}[v] || 'unk';
+}
+function verdictIcon(v) {
+  return {MALICIOUS:'⛔',SUSPICIOUS:'⚠️',CLEAN:'✅',NOT_FOUND:'🔍'}[v] || '❓';
+}
+
+function updateStats() {
+  const total = results.length;
+  const mal   = results.filter(r=>r.overall==='MALICIOUS').length;
+  const sus   = results.filter(r=>r.overall==='SUSPICIOUS').length;
+  const cln   = results.filter(r=>r.overall==='CLEAN').length;
+
+  document.getElementById('stat-total').textContent = `${total} IOC${total!==1?'s':''}`;
+  const sm = document.getElementById('stat-mal');
+  const ss = document.getElementById('stat-sus');
+  const sc = document.getElementById('stat-cln');
+  sm.textContent = `${mal} Malicious`;  sm.style.display = mal ? '' : 'none';
+  ss.textContent = `${sus} Suspicious`; ss.style.display = sus ? '' : 'none';
+  sc.textContent = `${cln} Clean`;      sc.style.display = cln ? '' : 'none';
+}
+
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderResults();
+}
+
+function applyFilter() { renderResults(); }
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!results.length) return;
+  const cols = ['ioc','type','timestamp','overall_verdict',
+    'vt_malicious','vt_suspicious','vt_verdict',
+    'otx_pulses','otx_verdict','abuseipdb_score','abuseipdb_verdict',
+    'urlscan_verdict'];
+
+  const rows = results.map(r => {
+    const row = { ioc:r.ioc, type:r.type, timestamp:r.timestamp, overall_verdict:r.overall };
+    for (const c of r.checks) {
+      if (c.source?.includes('VirusTotal'))    { row.vt_malicious=c.malicious; row.vt_suspicious=c.suspicious; row.vt_verdict=c.verdict; }
+      if (c.source?.includes('AlienVault'))    { row.otx_pulses=c.pulse_count; row.otx_verdict=c.verdict; }
+      if (c.source?.includes('AbuseIPDB'))     { row.abuseipdb_score=c.abuse_score; row.abuseipdb_verdict=c.verdict; }
+      if (c.source?.includes('URLScan'))       { row.urlscan_verdict=c.verdict; }
+    }
+    return cols.map(c => `"${(row[c]??'').toString().replace(/"/g,'""')}"`).join(',');
+  });
+
+  const csv = [cols.join(','), ...rows].join('\n');
+  download(`ioc_rapport_${ts()}.csv`, 'text/csv', csv);
+}
+
+function exportHTML() {
+  if (!results.length) return;
+  const ts_str = new Date().toLocaleString('nl-NL');
+  const rows = results.map(r => {
+    const vc = verdictClass(r.overall);
+    const vi = verdictIcon(r.overall);
+    const srcs = r.checks.map(c => `${c.source}: ${c.verdict||c.error||'?'}`).join(' | ');
+    return `<tr><td>${r.ioc}</td><td>${r.type.toUpperCase()}</td>
+      <td><span style="font-weight:700;color:${vc==='mal'?'#f43f5e':vc==='sus'?'#fb923c':vc==='cln'?'#34d399':'#6b7280'}">${vi} ${r.overall}</span></td>
+      <td style="font-size:.8em;color:#64748b">${srcs}</td>
+      <td style="font-size:.75em;color:#64748b">${r.timestamp.substring(0,19).replace('T',' ')}</td></tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
+<title>IOC Rapport</title>
+<style>body{font-family:sans-serif;background:#07090f;color:#f1f5f9;padding:2rem}
+h1{margin-bottom:1rem}table{width:100%;border-collapse:collapse}
+th,td{padding:.5rem .75rem;border-bottom:1px solid #1f2937;text-align:left}
+th{background:#0d1117;font-size:.75em;text-transform:uppercase;letter-spacing:.1em;color:#64748b}
+</style></head><body>
+<h1>🛡️ IOC Rapport</h1>
+<p style="color:#64748b;margin-bottom:1.5rem">Gegenereerd: ${ts_str} · ${results.length} IOC's</p>
+<table><thead><tr><th>IOC</th><th>Type</th><th>Verdict</th><th>Bronnen</th><th>Tijdstip</th></tr></thead>
+<tbody>${rows}</tbody></table></body></html>`;
+
+  download(`ioc_rapport_${ts()}.html`, 'text/html', html);
+}
+
+function download(filename, type, content) {
+  const a  = document.createElement('a');
+  const bl = new Blob([content], { type });
+  a.href   = URL.createObjectURL(bl);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function ts() { return new Date().toISOString().substring(0,16).replace(/[T:]/g,'-'); }
+</script>
+</body>
+</html>
